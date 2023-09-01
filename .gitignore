@@ -21,3 +21,5 @@
 go.work
 
 release/
+main.go
+fakeSSH

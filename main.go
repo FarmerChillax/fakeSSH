@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -8,8 +9,14 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/FarmerChillax/fakeSSH/config"
+	"github.com/FarmerChillax/fakeSSH/model"
+	"github.com/FarmerChillax/fakeSSH/repository"
+	"github.com/FarmerChillax/fakeSSH/vars"
 	"github.com/gliderlabs/ssh"
+	"github.com/sirupsen/logrus"
 	stdssh "golang.org/x/crypto/ssh"
+	"gorm.io/gorm"
 )
 
 func CreateOrLoadKeySigner() (stdssh.Signer, error) {
@@ -38,16 +45,49 @@ func Handler(s ssh.Session) {
 }
 
 func PasswordHandler(ctx ssh.Context, password string) bool {
-	fmt.Printf("user: %s; pwd: %s\n", ctx.User(), password)
-	return true
+	log.Printf("user: %s; pwd: %s\n", ctx.User(), password)
+	db := vars.GetDB()
+	err := db.Transaction(func(tx *gorm.DB) error {
+		dataRepo := repository.NewDataRepository(db)
+		data, err := dataRepo.FirstOrCreate(&model.Data{
+			Username: ctx.User(),
+			Password: password,
+		})
+		if err != nil {
+			logrus.Errorf("PasswordHandler.dataRepo.FirstOrCreate err: %v; username: %s; password: %s",
+				err, ctx.User(), password)
+			return err
+		}
+		data.Count++
+		if err := dataRepo.UpdateById(data, int64(data.Id)); err != nil {
+			logrus.Errorf("PasswordHandler.dataRepo.UpdateById(%#v) err: %v", data, err)
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		logrus.Errorf("PasswordHandler.Transaction err: %v", err)
+		return false
+	}
+
+	return false
 }
 
+var port int
+
 func main() {
+	if err := config.Load(); err != nil {
+		log.Fatalf("config.Load err: %v", err)
+	}
 	hostKeySigner, err := CreateOrLoadKeySigner()
 	if err != nil {
 		log.Fatal(err)
 	}
-	addr := ":22"
+	flag.IntVar(&port, "port", 22, "SSH server port")
+	flag.Parse()
+
+	addr := fmt.Sprintf(":%d", port)
 	s := &ssh.Server{
 		Addr:    addr,
 		Handler: Handler,
@@ -55,6 +95,6 @@ func main() {
 		PasswordHandler: PasswordHandler,
 	}
 	s.AddHostKey(hostKeySigner)
-
+	logrus.Infof("ssh server is running on: %s", addr)
 	log.Fatal(s.ListenAndServe())
 }
