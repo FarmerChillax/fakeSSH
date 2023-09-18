@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/FarmerChillax/fakeSSH/repository"
 	"github.com/FarmerChillax/fakeSSH/vars"
 	"github.com/gliderlabs/ssh"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	stdssh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
@@ -47,6 +49,9 @@ func Handler(s ssh.Session) {
 func PasswordHandler(ctx ssh.Context, password string) bool {
 	log.Printf("user: %s; pwd: %s\n", ctx.User(), password)
 	db := vars.GetDB()
+	sessionId := ctx.SessionID()
+	logrus.Infof("session id: %s", sessionId)
+
 	err := db.Transaction(func(tx *gorm.DB) error {
 		dataRepo := repository.NewDataRepository(db)
 		data, err := dataRepo.FirstOrCreate(&model.Data{
@@ -77,6 +82,14 @@ func PasswordHandler(ctx ssh.Context, password string) bool {
 var port int
 
 func main() {
+
+	http.Handle("/fake-ssh/metrics", promhttp.Handler())
+	go func() {
+		if err := http.ListenAndServe(":80", http.DefaultServeMux); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
 	if err := config.Load(); err != nil {
 		log.Fatalf("config.Load err: %v", err)
 	}
