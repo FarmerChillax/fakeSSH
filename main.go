@@ -83,13 +83,6 @@ var port int
 
 func main() {
 
-	http.Handle("/fake-ssh/metrics", promhttp.Handler())
-	go func() {
-		if err := http.ListenAndServe(":80", http.DefaultServeMux); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
 	if err := config.Load(); err != nil {
 		log.Fatalf("config.Load err: %v", err)
 	}
@@ -99,6 +92,13 @@ func main() {
 	}
 	flag.IntVar(&port, "port", 22, "SSH server port")
 	flag.Parse()
+
+	http.Handle("/fake-ssh/metrics", promhttp.Handler())
+	go func() {
+		if err := http.ListenAndServe(":2853", http.DefaultServeMux); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
 	addr := fmt.Sprintf(":%d", port)
 	s := &ssh.Server{
