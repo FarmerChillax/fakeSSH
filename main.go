@@ -93,7 +93,7 @@ func main() {
 	flag.IntVar(&port, "port", 22, "SSH server port")
 	flag.Parse()
 
-	http.Handle("/fake-ssh/metrics", promhttp.Handler())
+	http.Handle("/metrics", promhttp.Handler())
 	go func() {
 		if err := http.ListenAndServe(":2853", http.DefaultServeMux); err != nil {
 			log.Fatal(err)
